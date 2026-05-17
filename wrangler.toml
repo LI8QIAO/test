@@ -1,0 +1,6 @@
+name = "counterintuitivereactiontest2"
+compatibility_date = "2026-01-01"
+
+# 正确：把整个 dist 作为静态资源目录
+[assets]
+directory = "./dist"
