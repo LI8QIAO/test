@@ -199,6 +199,7 @@ export default function App() {
       timeoutRef.current = null; // Unlock
       if (currentTotal >= 19) {
         setGameState('result');
+        setLastFeedback(null); // Clear feedback when going to result screen
         gameRunning.current = false;
       } else {
         // "Forced Refresh" internal state logic
@@ -223,6 +224,7 @@ export default function App() {
     setGameState('playing');
     setStats({ correct: 0, total: 0, times: [], streak: 0, maxStreak: 0 });
     setHistory([]);
+    setLastFeedback(null); // Clear feedback from previous session
     generateChallenge(mode);
   };
 
