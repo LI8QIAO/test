@@ -37,9 +37,19 @@ body {
 }
 
 .bg-animated-gradient {
-  background: linear-gradient(-45deg, #0a0a0a, #111827, #1e1b4b, #0f172a, #0a0a0a);
+  background: linear-gradient(
+    -45deg, 
+    #0a0a0a, 
+    #1e1b4b, 
+    #312e81, 
+    #1e3a8a, 
+    #1e1b4b, 
+    #3c0764, 
+    #0f172a, 
+    #0a0a0a
+  );
   background-size: 400% 400%;
-  animation: gradientBG 15s ease infinite;
+  animation: gradientBG 20s ease infinite;
 }
 
 @keyframes shake {
