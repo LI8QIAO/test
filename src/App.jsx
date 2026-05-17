@@ -69,8 +69,10 @@ export default function App() {
   const [history, setHistory] = useState([]);
   const [isShaking, setIsShaking] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
-
-  // Timer ref for timeout-based modes
+  
+  // Use refs for game-critical logic to avoid stale closures and double-triggers
+  const gameRunning = useRef(false);
+  const totalProcessed = useRef(0);
   const timeoutRef = useRef(null);
 
   // --- Game Logic ---
@@ -156,12 +158,21 @@ export default function App() {
   }, [currentMode]);
 
   const handleAnswer = (userAnswer) => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    // Prevent multiple clicks or processing if not in playing state
+    if (gameState !== 'playing' || isTransitioning || lastFeedback || timeoutRef.current === 'processing') return;
+    
+    if (timeoutRef.current && timeoutRef.current !== 'processing') {
+      clearTimeout(timeoutRef.current);
+    }
+    timeoutRef.current = 'processing'; // Lock processing
     
     const endTime = performance.now();
     const reactionTime = Math.round(endTime - startTime);
     const isCorrect = userAnswer === challenge.answer;
-    const nextTotal = stats.total + 1;
+    
+    // Update ref immediately
+    totalProcessed.current += 1;
+    const currentTotal = totalProcessed.current;
 
     if (!isCorrect) {
       setIsShaking(true);
@@ -171,7 +182,7 @@ export default function App() {
       const newStreak = isCorrect ? prev.streak + 1 : 0;
       return {
         correct: isCorrect ? prev.correct + 1 : prev.correct,
-        total: nextTotal,
+        total: currentTotal,
         times: isCorrect ? [...prev.times, reactionTime] : prev.times,
         streak: newStreak,
         maxStreak: Math.max(prev.maxStreak, newStreak),
@@ -185,8 +196,10 @@ export default function App() {
 
     // Wait a bit before next challenge
     setTimeout(() => {
-      if (nextTotal >= 19 && gameState === 'playing') {
+      timeoutRef.current = null; // Unlock
+      if (currentTotal >= 19) {
         setGameState('result');
+        gameRunning.current = false;
       } else {
         // "Forced Refresh" internal state logic
         setIsTransitioning(true);
@@ -202,6 +215,10 @@ export default function App() {
   };
 
   const startGame = (mode) => {
+    if (gameRunning.current) return; // Prevent double start
+    
+    gameRunning.current = true;
+    totalProcessed.current = 0;
     setCurrentMode(mode);
     setGameState('playing');
     setStats({ correct: 0, total: 0, times: [], streak: 0, maxStreak: 0 });
