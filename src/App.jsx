@@ -451,8 +451,8 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white selection:bg-purple-500/30 overflow-x-hidden">
-      <nav className="p-6 flex justify-between items-center border-b border-white/5">
+    <div className="min-h-screen bg-animated-gradient text-white selection:bg-purple-500/30 overflow-x-hidden transition-all duration-1000">
+      <nav className="p-6 flex justify-between items-center border-b border-white/5 backdrop-blur-sm bg-black/10">
         <div className="flex items-center space-x-2 cursor-pointer" onClick={backToMenu}>
           <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
             <Zap size={18} className="text-white" />
@@ -491,7 +491,7 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      <footer className="p-12 text-center text-gray-600 text-xs">
+      <footer className="p-12 text-center text-gray-500 text-xs backdrop-blur-sm bg-black/5 mt-auto">
         <p>© 2026 反直觉实验室 - 认知心理学挑战项目</p>
       </footer>
     </div>
