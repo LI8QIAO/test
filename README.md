@@ -40,7 +40,9 @@
 
 ## 🌐 部署说明
 
-项目已配置为支持一键部署至 **Vercel** 或 **Netlify**。同时提供单文件独立版（standalone.html），无需任何环境即可双击游玩。
-
+项目已配置为支持一键部署至 **Vercel** 或 **Netlify**。
+可访问https://test-iota-three-50.vercel.app/
+或https://counterintuitivereactiontest3.netlify.app/
+开始测试
 ---
 *由反直觉实验室（Cognitive Intuition Lab）驱动。*
