@@ -1,17 +1,35 @@
-// Simple in-memory user store for demo purposes.
-// In a real production environment, use a proper database.
-let users = {}; 
+const { createClient } = require('@supabase/supabase-js');
+
+const SUPABASE_URL = 'https://ymyyliwjztyggrhtnsii.supabase.co';
+const SUPABASE_KEY = 'sb_secret_QQuHXBGgA0HhjC4u4mAa7g_7mssCope';
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 exports.handler = async (event, context) => {
   const { httpMethod, queryStringParameters, body } = event;
+  const headers = {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
+  };
+
+  if (httpMethod === 'OPTIONS') {
+    return { statusCode: 200, headers, body: '' };
+  }
 
   // GET: Check username availability
   if (httpMethod === 'GET') {
     const username = queryStringParameters.username;
+    const { data, error } = await supabase
+      .from('users')
+      .select('username')
+      .eq('username', username)
+      .single();
+
     return {
       statusCode: 200,
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      body: JSON.stringify({ available: !users[username] })
+      headers,
+      body: JSON.stringify({ available: !data })
     };
   }
 
@@ -21,67 +39,78 @@ exports.handler = async (event, context) => {
       const { action, username, password, currentUsername, newUsername, oldPassword, newPassword } = JSON.parse(body);
 
       if (action === 'register') {
-        if (users[username]) return { statusCode: 400, body: JSON.stringify({ message: '用户名已被占用' }) };
-        users[username] = { username, password };
+        const { data, error } = await supabase
+          .from('users')
+          .insert([{ username, password }])
+          .select();
+
+        if (error) {
+          return { statusCode: 400, headers, body: JSON.stringify({ message: '用户名已被占用或注册失败' }) };
+        }
         return {
           statusCode: 200,
-          headers: { 'Access-Control-Allow-Origin': '*' },
-          body: JSON.stringify({ user: { username } })
+          headers,
+          body: JSON.stringify({ user: { username: data[0].username } })
         };
       }
 
       if (action === 'login') {
-        const user = users[username];
-        if (user && user.password === password) {
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('username', username)
+          .eq('password', password)
+          .single();
+
+        if (data) {
           return {
             statusCode: 200,
-            headers: { 'Access-Control-Allow-Origin': '*' },
-            body: JSON.stringify({ user: { username } })
+            headers,
+            body: JSON.stringify({ user: { username: data.username } })
           };
         }
-        return { statusCode: 401, body: JSON.stringify({ message: '用户名或密码错误' }) };
+        return { statusCode: 401, headers, body: JSON.stringify({ message: '用户名或密码错误' }) };
       }
 
       if (action === 'update') {
-        const user = users[currentUsername];
-        if (!user || user.password !== oldPassword) {
-          return { statusCode: 401, body: JSON.stringify({ message: '原密码验证失败' }) };
+        // 1. Verify old password
+        const { data: user, error: fetchError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('username', currentUsername)
+          .eq('password', oldPassword)
+          .single();
+
+        if (!user) {
+          return { statusCode: 401, headers, body: JSON.stringify({ message: '原密码验证失败' }) };
         }
 
-        // Handle username change
-        if (newUsername && newUsername !== currentUsername) {
-          if (users[newUsername]) return { statusCode: 400, body: JSON.stringify({ message: '新用户名已被占用' }) };
-          delete users[currentUsername];
-          user.username = newUsername;
-          users[newUsername] = user;
-        }
+        // 2. Prepare update object
+        const updates = {};
+        if (newUsername && newUsername !== currentUsername) updates.username = newUsername;
+        if (newPassword) updates.password = newPassword;
 
-        // Handle password change
-        if (newPassword) {
-          user.password = newPassword;
+        // 3. Perform update
+        const { data: updatedUser, error: updateError } = await supabase
+          .from('users')
+          .update(updates)
+          .eq('username', currentUsername)
+          .select();
+
+        if (updateError) {
+          return { statusCode: 400, headers, body: JSON.stringify({ message: '更新失败，用户名可能已被占用' }) };
         }
 
         return {
           statusCode: 200,
-          headers: { 'Access-Control-Allow-Origin': '*' },
-          body: JSON.stringify({ user: { username: user.username } })
+          headers,
+          body: JSON.stringify({ user: { username: updatedUser[0].username } })
         };
       }
     } catch (e) {
-      return { statusCode: 500, body: JSON.stringify({ message: 'Server Error' }) };
+      return { statusCode: 500, headers, body: JSON.stringify({ message: 'Server Error' }) };
     }
   }
 
-  if (httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
-      }
-    };
-  }
-
-  return { statusCode: 405, body: 'Method Not Allowed' };
+  return { statusCode: 405, headers, body: 'Method Not Allowed' };
 };
