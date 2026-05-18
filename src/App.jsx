@@ -14,7 +14,11 @@ import {
   ListOrdered,
   ChevronDown,
   ChevronUp,
-  Clock
+  Clock,
+  LogIn,
+  User as UserIcon,
+  Globe,
+  X
 } from 'lucide-react';
 
 // --- Constants & Types ---
@@ -46,6 +50,8 @@ const EMOTIONS = [
 ];
 
 const STORAGE_KEY = 'intuition_x_leaderboard';
+const USER_STORAGE_KEY = 'intuition_x_user';
+const API_URL = '/.netlify/functions/leaderboard';
 
 // --- Utilities ---
 const getRandomElement = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -75,7 +81,12 @@ export default function App() {
   const [history, setHistory] = useState([]);
   const [isShaking, setIsShaking] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  
+  const [user, setUser] = useState(() => {
+    const savedUser = localStorage.getItem(USER_STORAGE_KEY);
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+
   // Use refs for game-critical logic to avoid stale closures and double-triggers
   const gameRunning = useRef(false);
   const totalProcessed = useRef(0);
@@ -101,7 +112,50 @@ export default function App() {
     scores[mode] = scores[mode].slice(0, 20);
     
     localStorage.setItem(STORAGE_KEY, JSON.stringify(scores));
-  }, []);
+    
+    // Auto-upload if user is logged in
+    if (user) {
+      uploadBestScores(user.username, scores);
+    }
+  }, [user]);
+
+  const uploadBestScores = async (username, allScores) => {
+    try {
+      // Get best score for each mode
+      const bestScores = Object.keys(allScores).map(modeId => {
+        const topScore = allScores[modeId][0]; // Already sorted in saveScore
+        return {
+          modeId,
+          username,
+          accuracy: topScore.accuracy,
+          avgTime: topScore.avgTime,
+          antiIndex: topScore.antiIndex,
+          date: topScore.date
+        };
+      });
+
+      await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, scores: bestScores })
+      });
+    } catch (error) {
+      console.error('Failed to upload scores:', error);
+    }
+  };
+
+  const handleLogin = (username) => {
+    const newUser = { username };
+    setUser(newUser);
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(newUser));
+    setIsLoginModalOpen(false);
+    
+    // Upload existing scores on login
+    const rawData = localStorage.getItem(STORAGE_KEY);
+    if (rawData) {
+      uploadBestScores(username, JSON.parse(rawData));
+    }
+  };
 
   // --- Game Logic ---
 
@@ -552,13 +606,30 @@ export default function App() {
         
         <div className="flex items-center gap-6">
           {gameState === 'menu' && (
-            <button 
-              onClick={showLeaderboard}
-              className="flex items-center space-x-2 text-gray-500 hover:text-white transition-colors group"
-            >
-              <ListOrdered size={20} className="group-hover:text-yellow-500 transition-colors" />
-              <span className="font-bold text-sm">排行榜</span>
-            </button>
+            <div className="flex items-center gap-4">
+              {user ? (
+                <div className="flex items-center gap-2 text-white bg-white/10 px-3 py-1.5 rounded-full border border-white/10">
+                  <UserIcon size={16} className="text-blue-400" />
+                  <span className="font-bold text-xs tracking-wide">{user.username}</span>
+                </div>
+              ) : (
+                <button 
+                  onClick={() => setIsLoginModalOpen(true)}
+                  className="flex items-center space-x-2 text-gray-500 hover:text-white transition-colors group"
+                >
+                  <LogIn size={20} className="group-hover:text-blue-500 transition-colors" />
+                  <span className="font-bold text-sm">Login</span>
+                </button>
+              )}
+              
+              <button 
+                onClick={showLeaderboard}
+                className="flex items-center space-x-2 text-gray-500 hover:text-white transition-colors group"
+              >
+                <ListOrdered size={20} className="group-hover:text-yellow-500 transition-colors" />
+                <span className="font-bold text-sm">排行榜</span>
+              </button>
+            </div>
           )}
 
           {gameState !== 'menu' && (
@@ -596,6 +667,12 @@ export default function App() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        <LoginModal 
+          isOpen={isLoginModalOpen} 
+          onClose={() => setIsLoginModalOpen(false)} 
+          onLogin={handleLogin} 
+        />
       </main>
 
       <footer className="p-12 text-center text-gray-500 text-xs backdrop-blur-sm bg-black/5 mt-auto">
@@ -672,12 +749,36 @@ function getInstruction(mode) {
 
 function LeaderboardView({ onBack }) {
   const [expandedMode, setExpandedMode] = useState(null);
-  const [scores, setScores] = useState({});
+  const [activeTab, setActiveTab] = useState('personal'); // 'personal' or 'global'
+  const [personalScores, setPersonalScores] = useState({});
+  const [globalScores, setGlobalScores] = useState({});
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     const rawData = localStorage.getItem(STORAGE_KEY);
-    if (rawData) setScores(JSON.parse(rawData));
+    if (rawData) setPersonalScores(JSON.parse(rawData));
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'global') {
+      fetchGlobalScores();
+    }
+  }, [activeTab]);
+
+  const fetchGlobalScores = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(API_URL);
+      if (response.ok) {
+        const data = await response.json();
+        setGlobalScores(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch global scores:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const modeList = [
     { id: MODES.STROOP, name: '颜色 Stroop', color: 'blue' },
@@ -690,16 +791,38 @@ function LeaderboardView({ onBack }) {
 
   return (
     <div className="flex flex-col items-center py-12 px-4 max-w-3xl mx-auto w-full">
-      <div className="flex items-center justify-between w-full mb-12">
-        <h2 className="text-4xl font-black text-white">个人排行榜</h2>
+      <div className="flex items-center justify-between w-full mb-8">
+        <h2 className="text-4xl font-black text-white">排行榜</h2>
         <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-400">
           <ChevronLeft size={32} />
         </button>
       </div>
 
+      {/* Tabs */}
+      <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10 mb-8">
+        <button 
+          onClick={() => setActiveTab('personal')}
+          className={`px-8 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === 'personal' ? 'bg-white text-black shadow-lg' : 'text-gray-500 hover:text-white'}`}
+        >
+          <div className="flex items-center gap-2">
+            <UserIcon size={16} />
+            个人记录
+          </div>
+        </button>
+        <button 
+          onClick={() => setActiveTab('global')}
+          className={`px-8 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === 'global' ? 'bg-white text-black shadow-lg' : 'text-gray-500 hover:text-white'}`}
+        >
+          <div className="flex items-center gap-2">
+            <Globe size={16} />
+            全民排行
+          </div>
+        </button>
+      </div>
+
       <div className="space-y-4 w-full">
         {modeList.map((mode) => {
-          const modeScores = scores[mode.id] || [];
+          const modeScores = activeTab === 'personal' ? (personalScores[mode.id] || []) : (globalScores[mode.id] || []);
           const isExpanded = expandedMode === mode.id;
 
           return (
@@ -711,7 +834,7 @@ function LeaderboardView({ onBack }) {
                 <div className="flex items-center gap-4">
                   <div className={`w-3 h-3 rounded-full bg-${mode.color === 'yellow' ? 'yellow-500' : mode.color === 'blue' ? 'blue-500' : mode.color === 'purple' ? 'purple-500' : mode.color === 'green' ? 'green-500' : mode.color === 'orange' ? 'orange-500' : 'red-500'}`} />
                   <span className="text-xl font-bold text-white">{mode.name}</span>
-                  <span className="text-sm text-gray-500">({modeScores.length} 条记录)</span>
+                  <span className="text-sm text-gray-500">({isLoading && activeTab === 'global' ? '加载中...' : `${modeScores.length} 条记录`})</span>
                 </div>
                 {isExpanded ? <ChevronUp className="text-gray-500" /> : <ChevronDown className="text-gray-500" />}
               </button>
@@ -727,18 +850,20 @@ function LeaderboardView({ onBack }) {
                     {modeScores.length > 0 ? (
                       <div className="p-6 space-y-4">
                         <div className="grid grid-cols-4 text-xs font-bold text-gray-500 uppercase tracking-widest pb-2 border-b border-white/5">
-                          <span>排名 / 日期</span>
+                          <span>{activeTab === 'personal' ? '排名 / 日期' : '排名 / 玩家'}</span>
                           <span className="text-center">正确率</span>
                           <span className="text-center">平均用时</span>
                           <span className="text-right">反直觉指数</span>
                         </div>
                         {modeScores.map((score, index) => (
-                          <div key={score.id} className="grid grid-cols-4 items-center py-2 text-sm border-b border-white/5 last:border-0">
+                          <div key={score.id || index} className="grid grid-cols-4 items-center py-2 text-sm border-b border-white/5 last:border-0">
                             <div className="flex items-center gap-3">
                               <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black ${index === 0 ? 'bg-yellow-500 text-black' : 'bg-white/10 text-gray-400'}`}>
                                 {index + 1}
                               </span>
-                              <span className="text-gray-400 text-[10px]">{score.date}</span>
+                              <span className="text-gray-400 text-[10px] truncate max-w-[80px]">
+                                {activeTab === 'personal' ? score.date : score.username}
+                              </span>
                             </div>
                             <span className="text-center font-mono text-white">{score.accuracy}%</span>
                             <span className="text-center font-mono text-white">{score.avgTime}ms</span>
@@ -747,7 +872,9 @@ function LeaderboardView({ onBack }) {
                         ))}
                       </div>
                     ) : (
-                      <div className="p-12 text-center text-gray-500 italic">暂无测试记录</div>
+                      <div className="p-12 text-center text-gray-500 italic">
+                        {isLoading ? '加载中...' : '暂无测试记录'}
+                      </div>
                     )}
                   </motion.div>
                 )}
@@ -756,6 +883,64 @@ function LeaderboardView({ onBack }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function LoginModal({ isOpen, onClose, onLogin }) {
+  const [username, setUsername] = useState('');
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="absolute inset-0 bg-black/80 backdrop-blur-md"
+      />
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
+        className="relative bg-[#1a1a1a] border border-white/10 p-8 rounded-[2rem] max-w-sm w-full shadow-2xl"
+      >
+        <button onClick={onClose} className="absolute top-6 right-6 text-gray-500 hover:text-white transition-colors">
+          <X size={20} />
+        </button>
+        
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-blue-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <LogIn className="text-blue-500" size={32} />
+          </div>
+          <h3 className="text-2xl font-black text-white">登入系统</h3>
+          <p className="text-gray-500 text-sm mt-1">输入昵称以同步全球排行榜</p>
+        </div>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-widest ml-1">用户名</label>
+            <input 
+              type="text" 
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="你的实验编号..."
+              className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white placeholder:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+              onKeyDown={(e) => e.key === 'Enter' && username.trim() && onLogin(username.trim())}
+            />
+          </div>
+          
+          <button 
+            disabled={!username.trim()}
+            onClick={() => onLogin(username.trim())}
+            className="w-full py-4 bg-white text-black font-black rounded-2xl hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg"
+          >
+            确认登入
+          </button>
+        </div>
+      </motion.div>
     </div>
   );
 }
