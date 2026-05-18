@@ -1,51 +1,57 @@
 const { createClient } = require('@supabase/supabase-js');
 
-const SUPABASE_URL = 'https://ymyyliwjztyggrhtnsii.supabase.co';
-const SUPABASE_KEY = 'sb_secret_QQuHXBGgA0HhjC4u4mAa7g_7mssCope';
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
 
 exports.handler = async (event, context) => {
   const { httpMethod, body } = event;
-  const headers = {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
-  };
 
+  // Handle preflight OPTIONS request
   if (httpMethod === 'OPTIONS') {
-    return { statusCode: 200, headers, body: '' };
+    return {
+      statusCode: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
+      }
+    };
   }
 
-  // GET: Fetch global scores for all modes
+  // GET: Fetch all scores
   if (httpMethod === 'GET') {
     try {
       const { data, error } = await supabase
         .from('leaderboard')
-        .select('*')
+        .select('username, mode_id, accuracy, avg_time, anti_index, date')
         .order('anti_index', { ascending: false });
 
       if (error) throw error;
 
-      // Group by modeId
+      // Group scores by mode_id
       const groupedScores = data.reduce((acc, score) => {
         if (!acc[score.mode_id]) acc[score.mode_id] = [];
         acc[score.mode_id].push(score);
         return acc;
       }, {});
 
-      // Limit each mode to top 50
+      // Keep only top 50 per mode
       Object.keys(groupedScores).forEach(modeId => {
         groupedScores[modeId] = groupedScores[modeId].slice(0, 50);
       });
 
       return {
         statusCode: 200,
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
         body: JSON.stringify(groupedScores)
       };
     } catch (e) {
-      return { statusCode: 500, headers, body: JSON.stringify({ message: 'Error fetching scores' }) };
+      return { statusCode: 500, body: 'Internal Server Error' };
     }
   }
 
@@ -55,21 +61,21 @@ exports.handler = async (event, context) => {
       const { username, scores } = JSON.parse(body);
       
       if (!username || !scores) {
-        return { statusCode: 400, headers, body: 'Missing username or scores' };
+        return { statusCode: 400, body: 'Missing username or scores' };
       }
 
+      // Update scores in Supabase
       for (const newScore of scores) {
-        // 1. Check if user already has a score for this mode
-        const { data: existingScore } = await supabase
+        // Upsert logic: If user already has a score for this mode, check if new one is better
+        const { data: existing } = await supabase
           .from('leaderboard')
-          .select('*')
+          .select('id, anti_index')
           .eq('username', username)
           .eq('mode_id', newScore.modeId)
           .single();
 
-        if (existingScore) {
-          // 2. Only update if the new antiIndex is higher
-          if (newScore.antiIndex > existingScore.anti_index) {
+        if (existing) {
+          if (newScore.antiIndex > existing.anti_index) {
             await supabase
               .from('leaderboard')
               .update({
@@ -78,10 +84,9 @@ exports.handler = async (event, context) => {
                 anti_index: newScore.antiIndex,
                 date: newScore.date
               })
-              .eq('id', existingScore.id);
+              .eq('id', existing.id);
           }
         } else {
-          // 3. Insert new score record
           await supabase
             .from('leaderboard')
             .insert([{
@@ -97,14 +102,13 @@ exports.handler = async (event, context) => {
 
       return {
         statusCode: 200,
-        headers,
+        headers: { 'Access-Control-Allow-Origin': '*' },
         body: JSON.stringify({ message: 'Scores updated successfully' })
       };
     } catch (e) {
-      console.error(e);
-      return { statusCode: 500, headers, body: JSON.stringify({ message: 'Internal Server Error' }) };
+      return { statusCode: 500, body: 'Internal Server Error' };
     }
   }
 
-  return { statusCode: 405, headers, body: 'Method Not Allowed' };
+  return { statusCode: 405, body: 'Method Not Allowed' };
 };
