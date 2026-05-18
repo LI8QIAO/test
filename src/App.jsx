@@ -997,7 +997,7 @@ function LeaderboardView({ onBack }) {
                 className="w-full p-6 flex items-center justify-between hover:bg-white/5 transition-colors"
               >
                 <div className="flex items-center gap-4">
-                  <div className={`w-3 h-3 rounded-full bg-${mode.color === 'yellow' ? 'yellow-500' : mode.color === 'blue' ? 'blue-500' : mode.color === 'purple' ? 'purple-500' : mode.color === 'green' ? 'green-500' : mode.color === 'orange' ? 'orange-500' : 'red-500'}`} />
+                  {mode.id === MODES.CHAOS && <div className="w-3 h-3 rounded-full bg-yellow-500" />}
                   <span className="text-xl font-bold text-white">{mode.name}</span>
                   <span className="text-sm text-gray-500">({isLoading && activeTab === 'global' ? '加载中...' : `${modeScores.length} 条记录`})</span>
                 </div>
