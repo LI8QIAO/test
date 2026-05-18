@@ -438,17 +438,30 @@ export default function App() {
         </div>
 
         <div className="w-full bg-white/5 rounded-3xl p-6 border border-white/10">
-          <h3 className="text-lg font-bold text-white mb-4">最近 10 次表现</h3>
-          <div className="flex items-end justify-between h-32 gap-1">
-            {history.slice(-10).map((h, i) => (
-              <div key={i} className="flex-1 flex flex-col items-center gap-2">
-                <div 
-                  className={`w-full rounded-t ${h.isCorrect ? 'bg-green-500/50' : 'bg-red-500/50'}`}
-                  style={{ height: `${Math.min(h.reactionTime / 10, 100)}%` }}
-                />
-                <span className="text-[10px] text-gray-500 font-mono">{h.reactionTime}</span>
-              </div>
-            ))}
+          <h3 className="text-lg font-bold text-white mb-4">最近 10 次表现 (反应时趋势)</h3>
+          <div className="flex items-end justify-between h-32 gap-2">
+            {(() => {
+              const lastTen = history.slice(-10);
+              const maxTime = Math.max(...lastTen.map(h => h.reactionTime), 1000);
+              return lastTen.map((h, i) => (
+                <div key={i} className="flex-1 flex flex-col items-center gap-2 group relative">
+                  {/* Tooltip on hover */}
+                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-white text-black text-[10px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 font-bold">
+                    {h.isCorrect ? '正确' : '错误'}
+                  </div>
+                  <div 
+                    className={`w-full rounded-sm transition-all duration-500 ${h.isCorrect ? 'bg-white' : 'bg-red-500/40'}`}
+                    style={{ 
+                      height: `${(h.reactionTime / maxTime) * 100}%`,
+                      minHeight: '4px'
+                    }}
+                  />
+                  <span className={`text-[10px] font-mono ${h.isCorrect ? 'text-gray-500' : 'text-red-400'}`}>
+                    {h.reactionTime}
+                  </span>
+                </div>
+              ));
+            })()}
           </div>
         </div>
 
