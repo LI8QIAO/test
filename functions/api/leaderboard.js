@@ -40,7 +40,8 @@ export const onRequestGet = async (context) => {
   const db = context.env.REACTION_DB;
   const kv = context.env.LEADERBOARD_KV;
 
-  const mode = context.url.searchParams.get('mode');
+  const url = new URL(context.request.url);
+  const mode = url.searchParams.get('mode');
   if (mode) {
     if (!MODES.includes(mode)) return jsonResponse({ message: 'Invalid mode' }, { status: 400 });
     const scores = await getTop100ForMode({ db, kv, modeId: mode });
@@ -103,4 +104,3 @@ export const onRequestPost = async (context) => {
 
   return jsonResponse({ message: 'Scores updated' });
 };
-

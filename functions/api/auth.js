@@ -47,7 +47,8 @@ export const onRequestOptions = async () => new Response(null, { status: 204 });
 
 export const onRequestGet = async (context) => {
   const db = context.env.REACTION_DB;
-  const username = normalizeUsername(context.url.searchParams.get('username'));
+  const url = new URL(context.request.url);
+  const username = normalizeUsername(url.searchParams.get('username'));
   if (!username) return jsonResponse({ message: 'Missing username' }, { status: 400 });
 
   const existing = await db
