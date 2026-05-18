@@ -438,33 +438,37 @@ export default function App() {
         </div>
 
         <div className="w-full bg-white/5 rounded-3xl p-6 border border-white/10">
-          <h3 className="text-lg font-bold text-white mb-4">最近 10 次表现 (反应时趋势)</h3>
-          <div className="flex items-end justify-between h-40 gap-2">
+          <h3 className="text-lg font-bold text-white mb-6">最近 10 次表现 (反应时趋势)</h3>
+          <div className="flex items-end justify-center h-48 gap-3">
             {(() => {
               const lastTen = history.slice(-10);
+              if (lastTen.length === 0) return <div className="text-gray-500 text-sm">暂无数据</div>;
+              
               const times = lastTen.map(h => h.reactionTime);
-              const maxTime = Math.max(...times, 1);
-              const minTime = Math.min(...times, maxTime);
+              const maxTime = Math.max(...times);
+              const minTime = Math.min(...times);
+              const range = maxTime - minTime;
               
               return lastTen.map((h, i) => {
-                // Calculate relative height: fastest is shorter, slowest is taller
-                // We use a range of 10% to 100% height
-                const range = maxTime - minTime;
-                const relativeHeight = range === 0 ? 50 : ((h.reactionTime - minTime) / range) * 85 + 15;
+                // Calculate relative height: 20% to 100%
+                // If all times are the same, use 60%
+                const relativeHeight = range === 0 ? 60 : ((h.reactionTime - minTime) / range) * 80 + 20;
 
                 return (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-2 group relative">
+                  <div key={i} className="flex-1 max-w-[40px] flex flex-col items-center gap-3 group relative h-full justify-end">
+                    {/* The Bar */}
                     <div 
-                      className="w-full bg-white rounded-sm transition-all duration-700 ease-out shadow-[0_0_10px_rgba(255,255,255,0.1)]"
+                      className="w-full bg-white rounded-t-sm transition-all duration-700 ease-out shadow-[0_0_15px_rgba(255,255,255,0.15)] hover:bg-blue-400"
                       style={{ 
                         height: `${relativeHeight}%`,
                       }}
                     />
-                    <div className="flex flex-col items-center">
-                      <span className="text-[10px] font-mono text-white/90">
+                    {/* The Info Below */}
+                    <div className="flex flex-col items-center shrink-0">
+                      <span className="text-[10px] font-mono text-white/80 mb-0.5">
                         {h.reactionTime}
                       </span>
-                      <span className={`text-[9px] font-bold uppercase tracking-tighter ${h.isCorrect ? 'text-green-500' : 'text-red-500'}`}>
+                      <span className={`text-[12px] font-bold ${h.isCorrect ? 'text-green-500' : 'text-red-500'}`}>
                         {h.isCorrect ? '✓' : '✗'}
                       </span>
                     </div>
@@ -472,11 +476,6 @@ export default function App() {
                 );
               });
             })()}
-          </div>
-          <div className="mt-4 flex justify-between text-[10px] text-gray-500 border-t border-white/5 pt-2">
-            <span>较快 ←</span>
-            <span>(高度代表反应时长)</span>
-            <span>→ 较慢</span>
           </div>
         </div>
 
