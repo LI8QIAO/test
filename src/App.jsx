@@ -52,6 +52,7 @@ const EMOTIONS = [
 const STORAGE_KEY = 'intuition_x_leaderboard';
 const USER_STORAGE_KEY = 'intuition_x_user';
 const API_URL = '/.netlify/functions/leaderboard';
+const AUTH_URL = '/.netlify/functions/auth';
 
 // --- Utilities ---
 const getRandomElement = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -86,6 +87,8 @@ export default function App() {
     return savedUser ? JSON.parse(savedUser) : null;
   });
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
   // Use refs for game-critical logic to avoid stale closures and double-triggers
   const gameRunning = useRef(false);
@@ -144,17 +147,30 @@ export default function App() {
     }
   };
 
-  const handleLogin = (username) => {
-    const newUser = { username };
-    setUser(newUser);
-    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(newUser));
+  const handleLogin = (userData) => {
+    setUser(userData);
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(userData));
     setIsLoginModalOpen(false);
     
     // Upload existing scores on login
     const rawData = localStorage.getItem(STORAGE_KEY);
     if (rawData) {
-      uploadBestScores(username, JSON.parse(rawData));
+      uploadBestScores(userData.username, JSON.parse(rawData));
     }
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem(USER_STORAGE_KEY);
+    setIsUserMenuOpen(false);
+  };
+
+  const handleUpdateUser = (updatedData) => {
+    const newUser = { ...user, ...updatedData };
+    setUser(newUser);
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(newUser));
+    setIsAccountModalOpen(false);
+    setIsUserMenuOpen(false);
   };
 
   // --- Game Logic ---
@@ -606,11 +622,43 @@ export default function App() {
         
         <div className="flex items-center gap-6">
           {gameState === 'menu' && (
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 relative">
               {user ? (
-                <div className="flex items-center gap-2 text-white bg-white/10 px-3 py-1.5 rounded-full border border-white/10">
-                  <UserIcon size={16} className="text-blue-400" />
-                  <span className="font-bold text-xs tracking-wide">{user.username}</span>
+                <div className="relative">
+                  <button 
+                    onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                    className="flex items-center gap-2 text-white bg-white/10 px-3 py-1.5 rounded-full border border-white/10 hover:bg-white/20 transition-all"
+                  >
+                    <UserIcon size={16} className="text-blue-400" />
+                    <span className="font-bold text-xs tracking-wide">{user.username}</span>
+                    <ChevronDown size={14} className={`transition-transform duration-300 ${isUserMenuOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  <AnimatePresence>
+                    {isUserMenuOpen && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        className="absolute right-0 mt-2 w-40 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50"
+                      >
+                        <button 
+                          onClick={() => setIsAccountModalOpen(true)}
+                          className="w-full px-4 py-3 text-left text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-colors flex items-center gap-2"
+                        >
+                          <UserIcon size={14} />
+                          管理账户
+                        </button>
+                        <button 
+                          onClick={handleLogout}
+                          className="w-full px-4 py-3 text-left text-sm text-red-400 hover:text-red-300 hover:bg-red-500/5 transition-colors flex items-center gap-2 border-t border-white/5"
+                        >
+                          <LogIn size={14} className="rotate-180" />
+                          Logout
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               ) : (
                 <button 
@@ -669,11 +717,18 @@ export default function App() {
         </AnimatePresence>
 
         <LoginModal 
-          isOpen={isLoginModalOpen} 
-          onClose={() => setIsLoginModalOpen(false)} 
-          onLogin={handleLogin} 
-        />
-      </main>
+           isOpen={isLoginModalOpen} 
+           onClose={() => setIsLoginModalOpen(false)} 
+           onLogin={handleLogin} 
+         />
+
+         <AccountModal 
+           isOpen={isAccountModalOpen} 
+           user={user}
+           onClose={() => setIsAccountModalOpen(false)} 
+           onUpdate={handleUpdateUser} 
+         />
+        </main>
 
       <footer className="p-12 text-center text-gray-500 text-xs backdrop-blur-sm bg-black/5 mt-auto">
         <p>© 2026 反直觉实验室 - 认知心理学挑战项目</p>
@@ -888,7 +943,60 @@ function LeaderboardView({ onBack }) {
 }
 
 function LoginModal({ isOpen, onClose, onLogin }) {
+  const [view, setView] = useState('login'); // 'login' or 'register'
   const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [usernameStatus, setUsernameStatus] = useState(null); // 'available', 'taken', null
+
+  useEffect(() => {
+    if (view === 'register' && username.length >= 2) {
+      const timer = setTimeout(() => checkUsername(username), 500);
+      return () => clearTimeout(timer);
+    } else {
+      setUsernameStatus(null);
+    }
+  }, [username, view]);
+
+  const checkUsername = async (name) => {
+    try {
+      const res = await fetch(`${AUTH_URL}?username=${name}`);
+      const data = await res.json();
+      setUsernameStatus(data.available ? 'available' : 'taken');
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!username || !password) return;
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch(AUTH_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: view, 
+          username, 
+          password 
+        })
+      });
+      
+      const data = await res.json();
+      if (res.ok) {
+        onLogin(data.user);
+      } else {
+        setError(data.message || '操作失败');
+      }
+    } catch (e) {
+      setError('网络错误，请稍后再试');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -905,7 +1013,7 @@ function LoginModal({ isOpen, onClose, onLogin }) {
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.9, opacity: 0 }}
-        className="relative bg-[#1a1a1a] border border-white/10 p-8 rounded-[2rem] max-w-sm w-full shadow-2xl"
+        className="relative bg-[#1a1a1a] border border-white/10 p-8 rounded-[2.5rem] max-w-sm w-full shadow-2xl"
       >
         <button onClick={onClose} className="absolute top-6 right-6 text-gray-500 hover:text-white transition-colors">
           <X size={20} />
@@ -913,31 +1021,183 @@ function LoginModal({ isOpen, onClose, onLogin }) {
         
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-blue-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <LogIn className="text-blue-500" size={32} />
+            {view === 'login' ? <LogIn className="text-blue-500" size={32} /> : <UserIcon className="text-purple-500" size={32} />}
           </div>
-          <h3 className="text-2xl font-black text-white">登入系统</h3>
-          <p className="text-gray-500 text-sm mt-1">输入昵称以同步全球排行榜</p>
+          <h3 className="text-2xl font-black text-white">{view === 'login' ? '登入系统' : '创建账户'}</h3>
+          <p className="text-gray-500 text-sm mt-1">
+            {view === 'login' ? '输入凭据以同步全球排行榜' : '注册以开始你的全球挑战之旅'}
+          </p>
         </div>
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <label className="text-xs font-bold text-gray-500 uppercase tracking-widest ml-1">用户名</label>
+            <div className="flex justify-between items-center ml-1">
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-widest">用户名</label>
+              {view === 'register' && username.length >= 2 && (
+                <span className={`text-[10px] font-bold ${usernameStatus === 'available' ? 'text-green-500' : 'text-red-500'}`}>
+                  {usernameStatus === 'available' ? '用户名可用' : usernameStatus === 'taken' ? '用户名已被占用' : '检查中...'}
+                </span>
+              )}
+            </div>
             <input 
               type="text" 
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="你的实验编号..."
-              className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white placeholder:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
-              onKeyDown={(e) => e.key === 'Enter' && username.trim() && onLogin(username.trim())}
+              className={`w-full bg-white/5 border rounded-2xl px-6 py-4 text-white placeholder:text-gray-700 focus:outline-none focus:ring-2 transition-all ${
+                usernameStatus === 'taken' ? 'border-red-500/50 focus:ring-red-500/50' : 'border-white/10 focus:ring-blue-500/50'
+              }`}
             />
           </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-widest ml-1">密码</label>
+            <input 
+              type="password" 
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white placeholder:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+            />
+          </div>
+
+          {error && <p className="text-red-500 text-xs font-bold text-center mt-2">{error}</p>}
           
           <button 
-            disabled={!username.trim()}
-            onClick={() => onLogin(username.trim())}
-            className="w-full py-4 bg-white text-black font-black rounded-2xl hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg"
+            disabled={isLoading || !username || !password || (view === 'register' && usernameStatus !== 'available')}
+            onClick={handleSubmit}
+            className="w-full py-4 bg-white text-black font-black rounded-2xl hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg mt-4"
           >
-            确认登入
+            {isLoading ? '处理中...' : view === 'login' ? '确认登入' : '立即注册'}
+          </button>
+
+          <div className="text-center mt-6">
+            <button 
+              onClick={() => { setView(view === 'login' ? 'register' : 'login'); setError(''); }}
+              className="text-gray-500 hover:text-white text-sm font-bold transition-colors"
+            >
+              {view === 'login' ? '还没有账号? 立即注册' : '已有账号? 返回登录'}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function AccountModal({ isOpen, user, onClose, onUpdate }) {
+  const [newUsername, setNewUsername] = useState(user?.username || '');
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [usernameStatus, setUsernameStatus] = useState(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setNewUsername(user?.username || '');
+      setOldPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setError('');
+    }
+  }, [isOpen, user]);
+
+  useEffect(() => {
+    if (newUsername !== user?.username && newUsername.length >= 2) {
+      const timer = setTimeout(async () => {
+        try {
+          const res = await fetch(`${AUTH_URL}?username=${newUsername}`);
+          const data = await res.json();
+          setUsernameStatus(data.available ? 'available' : 'taken');
+        } catch (e) { console.error(e); }
+      }, 500);
+      return () => clearTimeout(timer);
+    } else {
+      setUsernameStatus(null);
+    }
+  }, [newUsername, user]);
+
+  const handleUpdate = async () => {
+    if (newPassword && newPassword !== confirmPassword) {
+      setError('两次输入的新密码不一致');
+      return;
+    }
+    
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch(AUTH_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'update',
+          currentUsername: user.username,
+          newUsername,
+          oldPassword,
+          newPassword: newPassword || undefined
+        })
+      });
+      
+      const data = await res.json();
+      if (res.ok) {
+        onUpdate(data.user);
+      } else {
+        setError(data.message || '修改失败');
+      }
+    } catch (e) {
+      setError('网络错误');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
+      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative bg-[#1a1a1a] border border-white/10 p-8 rounded-[2.5rem] max-w-md w-full shadow-2xl">
+        <button onClick={onClose} className="absolute top-6 right-6 text-gray-500 hover:text-white transition-colors"><X size={20} /></button>
+        
+        <h3 className="text-2xl font-black text-white mb-6">管理账户</h3>
+
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <div className="flex justify-between items-center ml-1">
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-widest">修改用户名</label>
+              {newUsername !== user?.username && (
+                <span className={`text-[10px] font-bold ${usernameStatus === 'available' ? 'text-green-500' : 'text-red-500'}`}>
+                  {usernameStatus === 'available' ? '可用' : '已被占用'}
+                </span>
+              )}
+            </div>
+            <input type="text" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
+          </div>
+
+          <div className="border-t border-white/5 pt-6 space-y-4">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-widest ml-1">当前密码 (必填)</label>
+              <input type="password" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} placeholder="验证当前身份..." className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
+            </div>
+
+            <div className="space-y-2 pt-2">
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-widest ml-1">新密码 (可选)</label>
+              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="设置新密码" className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
+              <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="确认新密码" className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
+            </div>
+          </div>
+
+          {error && <p className="text-red-500 text-xs font-bold text-center">{error}</p>}
+          
+          <button 
+            disabled={isLoading || !oldPassword || (newUsername !== user?.username && usernameStatus !== 'available')}
+            onClick={handleUpdate}
+            className="w-full py-4 bg-white text-black font-black rounded-2xl hover:bg-gray-200 disabled:opacity-50 transition-all shadow-lg"
+          >
+            {isLoading ? '保存中...' : '保存更改'}
           </button>
         </div>
       </motion.div>
