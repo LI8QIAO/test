@@ -10,7 +10,11 @@ import {
   RotateCcw, 
   ChevronLeft,
   Trophy,
-  History
+  History,
+  ListOrdered,
+  ChevronDown,
+  ChevronUp,
+  Clock
 } from 'lucide-react';
 
 // --- Constants & Types ---
@@ -40,6 +44,8 @@ const EMOTIONS = [
   { word: '失败', type: 'negative' },
   { word: '丑陋', type: 'negative' },
 ];
+
+const STORAGE_KEY = 'intuition_x_leaderboard';
 
 // --- Utilities ---
 const getRandomElement = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -74,6 +80,28 @@ export default function App() {
   const gameRunning = useRef(false);
   const totalProcessed = useRef(0);
   const timeoutRef = useRef(null);
+
+  const saveScore = useCallback((mode, accuracy, avgTime, antiIndex) => {
+    const rawData = localStorage.getItem(STORAGE_KEY);
+    const scores = rawData ? JSON.parse(rawData) : {};
+    if (!scores[mode]) scores[mode] = [];
+    
+    const newEntry = {
+      id: Date.now(),
+      date: new Date().toLocaleDateString(),
+      accuracy,
+      avgTime,
+      antiIndex
+    };
+    
+    scores[mode].push(newEntry);
+    // Sort by antiIndex descending
+    scores[mode].sort((a, b) => b.antiIndex - a.antiIndex);
+    // Keep top 20
+    scores[mode] = scores[mode].slice(0, 20);
+    
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(scores));
+  }, []);
 
   // --- Game Logic ---
 
@@ -198,6 +226,17 @@ export default function App() {
     setTimeout(() => {
       timeoutRef.current = null; // Unlock
       if (currentTotal >= 19) {
+        // Calculate and save score
+        const finalCorrect = isCorrect ? stats.correct + 1 : stats.correct;
+        const finalTimes = isCorrect ? [...stats.times, reactionTime] : stats.times;
+        const avgTime = finalTimes.length > 0 
+          ? Math.round(finalTimes.reduce((a, b) => a + b, 0) / finalTimes.length) 
+          : 0;
+        const accuracy = Math.round((finalCorrect / 19) * 100);
+        const antiIndex = Math.round((accuracy * 10) - (avgTime / 10));
+        
+        saveScore(currentMode, accuracy, avgTime, antiIndex);
+
         setGameState('result');
         setLastFeedback(null); // Clear feedback when going to result screen
         gameRunning.current = false;
@@ -233,6 +272,10 @@ export default function App() {
     setGameState('menu');
     setChallenge(null);
     setLastFeedback(null);
+  };
+
+  const showLeaderboard = () => {
+    setGameState('leaderboard');
   };
 
   // --- Render Helpers ---
@@ -507,15 +550,27 @@ export default function App() {
           <span className="font-black text-xl tracking-tighter uppercase">Intuition.X</span>
         </div>
         
-        {gameState === 'playing' && (
-          <button 
-            onClick={backToMenu}
-            className="flex items-center space-x-2 text-gray-500 hover:text-white transition-colors"
-          >
-            <ChevronLeft size={20} />
-            <span>退出</span>
-          </button>
-        )}
+        <div className="flex items-center gap-6">
+          {gameState === 'menu' && (
+            <button 
+              onClick={showLeaderboard}
+              className="flex items-center space-x-2 text-gray-500 hover:text-white transition-colors group"
+            >
+              <ListOrdered size={20} className="group-hover:text-yellow-500 transition-colors" />
+              <span className="font-bold text-sm">排行榜</span>
+            </button>
+          )}
+
+          {gameState !== 'menu' && (
+            <button 
+              onClick={backToMenu}
+              className="flex items-center space-x-2 text-gray-500 hover:text-white transition-colors"
+            >
+              <ChevronLeft size={20} />
+              <span>退出</span>
+            </button>
+          )}
+        </div>
       </nav>
 
       <main className="container mx-auto max-w-6xl">
@@ -533,6 +588,11 @@ export default function App() {
           {gameState === 'result' && (
             <motion.div key="result" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               {renderResult()}
+            </motion.div>
+          )}
+          {gameState === 'leaderboard' && (
+            <motion.div key="leaderboard" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <LeaderboardView onBack={backToMenu} />
             </motion.div>
           )}
         </AnimatePresence>
@@ -608,4 +668,94 @@ function getInstruction(mode) {
     [MODES.SEMANTIC]: '正面词选负面，负面词选正面',
   };
   return instructions[mode] || '';
+}
+
+function LeaderboardView({ onBack }) {
+  const [expandedMode, setExpandedMode] = useState(null);
+  const [scores, setScores] = useState({});
+
+  useEffect(() => {
+    const rawData = localStorage.getItem(STORAGE_KEY);
+    if (rawData) setScores(JSON.parse(rawData));
+  }, []);
+
+  const modeList = [
+    { id: MODES.STROOP, name: '颜色 Stroop', color: 'blue' },
+    { id: MODES.DIRECTION, name: '方向矛盾', color: 'purple' },
+    { id: MODES.NUMBERS, name: '质合干扰', color: 'green' },
+    { id: MODES.MIRROR, name: '镜像映射', color: 'orange' },
+    { id: MODES.SEMANTIC, name: '语义翻转', color: 'red' },
+    { id: MODES.CHAOS, name: '混战模式', color: 'yellow' },
+  ];
+
+  return (
+    <div className="flex flex-col items-center py-12 px-4 max-w-3xl mx-auto w-full">
+      <div className="flex items-center justify-between w-full mb-12">
+        <h2 className="text-4xl font-black text-white">个人排行榜</h2>
+        <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-400">
+          <ChevronLeft size={32} />
+        </button>
+      </div>
+
+      <div className="space-y-4 w-full">
+        {modeList.map((mode) => {
+          const modeScores = scores[mode.id] || [];
+          const isExpanded = expandedMode === mode.id;
+
+          return (
+            <div key={mode.id} className="bg-white/5 border border-white/10 rounded-3xl overflow-hidden transition-all duration-300">
+              <button 
+                onClick={() => setExpandedMode(isExpanded ? null : mode.id)}
+                className="w-full p-6 flex items-center justify-between hover:bg-white/5 transition-colors"
+              >
+                <div className="flex items-center gap-4">
+                  <div className={`w-3 h-3 rounded-full bg-${mode.color === 'yellow' ? 'yellow-500' : mode.color === 'blue' ? 'blue-500' : mode.color === 'purple' ? 'purple-500' : mode.color === 'green' ? 'green-500' : mode.color === 'orange' ? 'orange-500' : 'red-500'}`} />
+                  <span className="text-xl font-bold text-white">{mode.name}</span>
+                  <span className="text-sm text-gray-500">({modeScores.length} 条记录)</span>
+                </div>
+                {isExpanded ? <ChevronUp className="text-gray-500" /> : <ChevronDown className="text-gray-500" />}
+              </button>
+
+              <AnimatePresence>
+                {isExpanded && (
+                  <motion.div 
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="border-t border-white/5"
+                  >
+                    {modeScores.length > 0 ? (
+                      <div className="p-6 space-y-4">
+                        <div className="grid grid-cols-4 text-xs font-bold text-gray-500 uppercase tracking-widest pb-2 border-b border-white/5">
+                          <span>排名 / 日期</span>
+                          <span className="text-center">正确率</span>
+                          <span className="text-center">平均用时</span>
+                          <span className="text-right">反直觉指数</span>
+                        </div>
+                        {modeScores.map((score, index) => (
+                          <div key={score.id} className="grid grid-cols-4 items-center py-2 text-sm border-b border-white/5 last:border-0">
+                            <div className="flex items-center gap-3">
+                              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black ${index === 0 ? 'bg-yellow-500 text-black' : 'bg-white/10 text-gray-400'}`}>
+                                {index + 1}
+                              </span>
+                              <span className="text-gray-400 text-[10px]">{score.date}</span>
+                            </div>
+                            <span className="text-center font-mono text-white">{score.accuracy}%</span>
+                            <span className="text-center font-mono text-white">{score.avgTime}ms</span>
+                            <span className="text-right font-black text-yellow-500">{score.antiIndex}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="p-12 text-center text-gray-500 italic">暂无测试记录</div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
