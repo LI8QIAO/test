@@ -51,8 +51,9 @@ const EMOTIONS = [
 
 const STORAGE_KEY = 'intuition_x_leaderboard';
 const USER_STORAGE_KEY = 'intuition_x_user';
-const API_URL = '/.netlify/functions/leaderboard';
-const AUTH_URL = '/.netlify/functions/auth';
+const API_URL = '/api/leaderboard';
+const AUTH_URL = '/api/auth';
+const RUN_URL = '/api/run/submit';
 
 // --- Utilities ---
 const getRandomElement = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -305,6 +306,20 @@ export default function App() {
         const accuracy = Math.round((finalCorrect / 19) * 100);
         const antiIndex = Math.round((accuracy * 10) - (avgTime / 10));
         
+        if (user) {
+          fetch(RUN_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              username: user.username,
+              modeId: currentMode,
+              accuracy,
+              avgTime,
+              antiIndex,
+            }),
+          }).catch(() => {});
+        }
+
         saveScore(currentMode, accuracy, avgTime, antiIndex);
 
         setGameState('result');
