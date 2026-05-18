@@ -61,6 +61,7 @@ export const onRequestGet = async (context) => {
 
 export const onRequestPost = async (context) => {
   const db = context.env.REACTION_DB;
+  const kv = context.env.LEADERBOARD_KV;
   let payload;
   try {
     payload = await context.request.json();
@@ -162,6 +163,34 @@ export const onRequestPost = async (context) => {
     }
 
     return jsonResponse({ user: { id: row.id, username: targetUsername } });
+  }
+
+  if (action === 'delete') {
+    const currentUsername = normalizeUsername(payload.currentUsername);
+    const password = payload.password || '';
+    if (!currentUsername || !password) return jsonResponse({ message: 'Missing currentUsername or password' }, { status: 400 });
+
+    const row = await db
+      .prepare('SELECT id, username, password_hash, password_salt FROM users WHERE username = ? LIMIT 1')
+      .bind(currentUsername)
+      .first();
+    if (!row) return jsonResponse({ message: '用户名或密码错误' }, { status: 401 });
+
+    const saltBytes = bytesFromB64(row.password_salt);
+    const hashBytes = await pbkdf2Hash({ password, saltBytes });
+    const calcHash = b64FromBytes(hashBytes);
+    if (!timingSafeEqual(calcHash, row.password_hash)) {
+      return jsonResponse({ message: '用户名或密码错误' }, { status: 401 });
+    }
+
+    await db.prepare('DELETE FROM best_scores WHERE user_id = ?').bind(row.id).run();
+    await db.prepare('DELETE FROM test_runs WHERE user_id = ?').bind(row.id).run();
+    await db.prepare('DELETE FROM users WHERE id = ?').bind(row.id).run();
+
+    const modes = ['stroop', 'direction', 'numbers', 'mirror', 'semantic', 'chaos'];
+    await Promise.all(modes.map((m) => kv.delete(`lb:${m}`)));
+
+    return jsonResponse({ message: 'Account deleted' });
   }
 
   return jsonResponse({ message: 'Invalid action' }, { status: 400 });

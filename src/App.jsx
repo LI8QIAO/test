@@ -18,7 +18,8 @@ import {
   LogIn,
   User as UserIcon,
   Globe,
-  X
+  X,
+  Trash2
 } from 'lucide-react';
 
 // --- Constants & Types ---
@@ -89,6 +90,7 @@ export default function App() {
   });
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [isDeleteAccountModalOpen, setIsDeleteAccountModalOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
   // Use refs for game-critical logic to avoid stale closures and double-triggers
@@ -171,6 +173,13 @@ export default function App() {
     setUser(newUser);
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(newUser));
     setIsAccountModalOpen(false);
+    setIsUserMenuOpen(false);
+  };
+
+  const handleDeleteAccount = () => {
+    setUser(null);
+    localStorage.removeItem(USER_STORAGE_KEY);
+    setIsDeleteAccountModalOpen(false);
     setIsUserMenuOpen(false);
   };
 
@@ -562,7 +571,7 @@ export default function App() {
           <StatBox label="平均反应时" value={`${avgTime}ms`} icon={<Zap size={16} />} />
           <StatBox label="正确率" value={`${accuracy}%`} icon={<Trophy size={16} />} />
           <StatBox label="最高连击" value={stats.maxStreak + 1} icon={<History size={16} />} />
-          <StatBox label="反直觉指数" value={antiIndex} icon={<RotateCcw size={16} />} highlight />
+          <AntiIndexBox antiIndex={antiIndex} accuracy={accuracy} avgTime={avgTime} />
         </div>
 
         <div className="w-full bg-white/5 rounded-3xl p-6 border border-white/10">
@@ -671,6 +680,13 @@ export default function App() {
                           <LogIn size={14} className="rotate-180" />
                           Logout
                         </button>
+                        <button 
+                          onClick={() => setIsDeleteAccountModalOpen(true)}
+                          className="w-full px-4 py-3 text-left text-sm text-red-400 hover:text-red-300 hover:bg-red-500/5 transition-colors flex items-center gap-2 border-t border-white/5"
+                        >
+                          <Trash2 size={14} />
+                          注销账户
+                        </button>
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -743,10 +759,24 @@ export default function App() {
            onClose={() => setIsAccountModalOpen(false)} 
            onUpdate={handleUpdateUser} 
          />
+
+          <DeleteAccountModal
+            isOpen={isDeleteAccountModalOpen}
+            user={user}
+            onClose={() => setIsDeleteAccountModalOpen(false)}
+            onDeleted={handleDeleteAccount}
+          />
         </main>
 
       <footer className="p-12 text-center text-gray-500 text-xs backdrop-blur-sm bg-black/5 mt-auto">
-        <p>© 2026 反直觉实验室 - 认知心理学挑战项目</p>
+        <a
+          href="https://github.com/LI8QIAO/test"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-white transition-colors"
+        >
+          © 2026 反直觉实验室 - 认知心理学挑战项目
+        </a>
       </footer>
     </div>
   );
@@ -791,6 +821,71 @@ function StatBox({ label, value, icon, highlight }) {
         <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
       </div>
       <div className="text-3xl font-black">{value}</div>
+    </div>
+  );
+}
+
+function AntiIndexBox({ antiIndex, accuracy, avgTime }) {
+  const [hovered, setHovered] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const open = pinned || hovered;
+
+  const togglePinned = () => {
+    setPinned((v) => !v);
+  };
+
+  const onKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      togglePinned();
+    }
+  };
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={togglePinned}
+      onKeyDown={onKeyDown}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className="p-6 rounded-3xl border bg-yellow-500 text-black border-yellow-400 cursor-pointer select-none"
+    >
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center space-x-2 opacity-80">
+          <RotateCcw size={16} />
+          <span className="text-[10px] font-bold uppercase tracking-wider">反直觉指数</span>
+        </div>
+        <ChevronDown size={16} className={`opacity-60 transition-transform duration-300 ${open ? 'rotate-180' : ''}`} />
+      </div>
+
+      <div className="text-3xl font-black">{antiIndex}</div>
+
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0, marginTop: 0 }}
+            animate={{ height: 'auto', opacity: 1, marginTop: 12 }}
+            exit={{ height: 0, opacity: 0, marginTop: 0 }}
+            transition={{ duration: 0.25 }}
+            className="overflow-hidden"
+          >
+            <div className="text-[12px] leading-relaxed text-black/80">
+              <div className="font-bold text-black/90">含义</div>
+              <div>综合衡量你在认知冲突中的抑制能力与速度，数值越高代表越能“反直觉”地做出正确反应。</div>
+              <div className="mt-2 font-bold text-black/90">算法</div>
+              <div className="font-mono text-[11px] bg-black/10 rounded-xl px-3 py-2 mt-1">
+                round(正确率% × 10 − 平均反应时(ms) ÷ 10)
+              </div>
+              <div className="mt-2">
+                <span className="font-bold">当前：</span>
+                正确率 {accuracy}% ，平均反应时 {avgTime}ms
+              </div>
+              <div className="mt-2 text-black/60">提示：点击（或触摸）可固定展开/收起。</div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1213,6 +1308,103 @@ function AccountModal({ isOpen, user, onClose, onUpdate }) {
             className="w-full py-4 bg-white text-black font-black rounded-2xl hover:bg-gray-200 disabled:opacity-50 transition-all shadow-lg"
           >
             {isLoading ? '保存中...' : '保存更改'}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function DeleteAccountModal({ isOpen, user, onClose, onDeleted }) {
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setPassword('');
+      setError('');
+      setIsLoading(false);
+    }
+  }, [isOpen]);
+
+  const handleDelete = async () => {
+    if (!user?.username || !password) return;
+    setIsLoading(true);
+    setError('');
+    try {
+      const res = await fetch(AUTH_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'delete',
+          currentUsername: user.username,
+          password,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.message || '注销失败');
+        return;
+      }
+      onDeleted();
+    } catch {
+      setError('网络错误');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="absolute inset-0 bg-black/80 backdrop-blur-md"
+      />
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
+        className="relative bg-[#1a1a1a] border border-white/10 p-8 rounded-[2.5rem] max-w-sm w-full shadow-2xl"
+      >
+        <button onClick={onClose} className="absolute top-6 right-6 text-gray-500 hover:text-white transition-colors">
+          <X size={20} />
+        </button>
+
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <Trash2 className="text-red-500" size={32} />
+          </div>
+          <h3 className="text-2xl font-black text-white">注销账户</h3>
+          <p className="text-gray-500 text-sm mt-1">将永久删除你的账户与记录（不可恢复）</p>
+        </div>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-widest ml-1">输入密码确认</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white placeholder:text-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500/50 transition-all"
+              onKeyDown={(e) => e.key === 'Enter' && password && handleDelete()}
+            />
+          </div>
+
+          {error && <p className="text-red-500 text-xs font-bold text-center">{error}</p>}
+
+          <button
+            disabled={isLoading || !password}
+            onClick={handleDelete}
+            className="w-full py-4 bg-red-500 text-white font-black rounded-2xl hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg"
+          >
+            {isLoading ? '处理中...' : '确认注销'}
           </button>
         </div>
       </motion.div>
