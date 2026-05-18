@@ -229,6 +229,7 @@ export default function App() {
   };
 
   const backToMenu = () => {
+    gameRunning.current = false; // Reset game lock when returning to menu
     setGameState('menu');
     setChallenge(null);
     setLastFeedback(null);
