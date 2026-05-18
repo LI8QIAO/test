@@ -439,29 +439,44 @@ export default function App() {
 
         <div className="w-full bg-white/5 rounded-3xl p-6 border border-white/10">
           <h3 className="text-lg font-bold text-white mb-4">最近 10 次表现 (反应时趋势)</h3>
-          <div className="flex items-end justify-between h-32 gap-2">
+          <div className="flex items-end justify-between h-40 gap-2">
             {(() => {
               const lastTen = history.slice(-10);
-              const maxTime = Math.max(...lastTen.map(h => h.reactionTime), 1000);
-              return lastTen.map((h, i) => (
-                <div key={i} className="flex-1 flex flex-col items-center gap-2 group relative">
-                  {/* Tooltip on hover */}
-                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-white text-black text-[10px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 font-bold">
-                    {h.isCorrect ? '正确' : '错误'}
+              const times = lastTen.map(h => h.reactionTime);
+              const maxTime = Math.max(...times, 1);
+              const minTime = Math.min(...times, maxTime);
+              
+              return lastTen.map((h, i) => {
+                // Calculate relative height: fastest is shorter, slowest is taller
+                // We use a range of 10% to 100% height
+                const range = maxTime - minTime;
+                const relativeHeight = range === 0 ? 50 : ((h.reactionTime - minTime) / range) * 85 + 15;
+
+                return (
+                  <div key={i} className="flex-1 flex flex-col items-center gap-2 group relative">
+                    <div 
+                      className="w-full bg-white rounded-sm transition-all duration-700 ease-out shadow-[0_0_10px_rgba(255,255,255,0.1)]"
+                      style={{ 
+                        height: `${relativeHeight}%`,
+                      }}
+                    />
+                    <div className="flex flex-col items-center">
+                      <span className="text-[10px] font-mono text-white/90">
+                        {h.reactionTime}
+                      </span>
+                      <span className={`text-[9px] font-bold uppercase tracking-tighter ${h.isCorrect ? 'text-green-500' : 'text-red-500'}`}>
+                        {h.isCorrect ? '✓' : '✗'}
+                      </span>
+                    </div>
                   </div>
-                  <div 
-                    className={`w-full rounded-sm transition-all duration-500 ${h.isCorrect ? 'bg-white' : 'bg-red-500/40'}`}
-                    style={{ 
-                      height: `${(h.reactionTime / maxTime) * 100}%`,
-                      minHeight: '4px'
-                    }}
-                  />
-                  <span className={`text-[10px] font-mono ${h.isCorrect ? 'text-gray-500' : 'text-red-400'}`}>
-                    {h.reactionTime}
-                  </span>
-                </div>
-              ));
+                );
+              });
             })()}
+          </div>
+          <div className="mt-4 flex justify-between text-[10px] text-gray-500 border-t border-white/5 pt-2">
+            <span>较快 ←</span>
+            <span>(高度代表反应时长)</span>
+            <span>→ 较慢</span>
           </div>
         </div>
 
