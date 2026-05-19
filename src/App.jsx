@@ -84,6 +84,7 @@ export default function App() {
   const [history, setHistory] = useState([]);
   const [isShaking, setIsShaking] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
   const [user, setUser] = useState(() => {
     const savedUser = localStorage.getItem(USER_STORAGE_KEY);
     return savedUser ? JSON.parse(savedUser) : null;
@@ -267,7 +268,7 @@ export default function App() {
 
   const handleAnswer = (userAnswer) => {
     // Prevent multiple clicks or processing if not in playing state
-    if (gameState !== 'playing' || isTransitioning || lastFeedback || timeoutRef.current === 'processing') return;
+    if (gameState !== 'playing' || isTransitioning || lastFeedback || timeoutRef.current === 'processing' || !challenge) return;
     
     if (timeoutRef.current && timeoutRef.current !== 'processing') {
       clearTimeout(timeoutRef.current);
@@ -334,6 +335,7 @@ export default function App() {
         setGameState('result');
         setLastFeedback(null); // Clear feedback when going to result screen
         gameRunning.current = false;
+        setHasStarted(false);
       } else {
         // "Forced Refresh" internal state logic
         setIsTransitioning(true);
@@ -358,7 +360,13 @@ export default function App() {
     setStats({ correct: 0, total: 0, times: [], streak: 0, maxStreak: 0 });
     setHistory([]);
     setLastFeedback(null); // Clear feedback from previous session
-    generateChallenge(mode);
+    setChallenge(null);
+    setIsTransitioning(false);
+    setHasStarted(false);
+    if (timeoutRef.current && timeoutRef.current !== 'processing') {
+      clearTimeout(timeoutRef.current);
+    }
+    timeoutRef.current = null;
   };
 
   const backToMenu = () => {
@@ -366,6 +374,7 @@ export default function App() {
     setGameState('menu');
     setChallenge(null);
     setLastFeedback(null);
+    setHasStarted(false);
   };
 
   const showLeaderboard = () => {
@@ -432,7 +441,30 @@ export default function App() {
   );
 
   const renderPlaying = () => {
-    if (!challenge || isTransitioning) return <div className="min-h-[80vh]" />;
+    if (isTransitioning) return <div className="min-h-[80vh]" />;
+    if (!hasStarted) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-[80vh] py-12 px-4">
+          <div className="text-center max-w-xl">
+            <div className="inline-flex items-center gap-2 px-4 py-1 bg-white/10 rounded-full text-xs uppercase tracking-widest text-gray-300 mb-6">
+              {currentMode === MODES.CHAOS ? '混战模式' : getModeName(currentMode)}
+            </div>
+            <h2 className="text-4xl font-black text-white mb-3">准备开始</h2>
+            <p className="text-gray-500 mb-10">点击 Start 后才开始出题与计时</p>
+            <button
+              onClick={() => {
+                setHasStarted(true);
+                generateChallenge(currentMode);
+              }}
+              className="px-12 py-5 bg-white text-black font-black rounded-3xl hover:bg-gray-200 active:scale-95 transition-all"
+            >
+              Start
+            </button>
+          </div>
+        </div>
+      );
+    }
+    if (!challenge) return <div className="min-h-[80vh]" />;
 
     return (
       <div className="flex flex-col items-center justify-between min-h-[80vh] py-12 px-4">
